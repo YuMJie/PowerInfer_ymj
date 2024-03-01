@@ -4079,7 +4079,7 @@ struct ggml_tensor * ggml_mul_mat(
         struct ggml_tensor  * b) {
     GGML_ASSERT(ggml_can_mul_mat(a, b));
     GGML_ASSERT(!ggml_is_transposed(a));
-
+    // printf("in ggml_mul_mat\n");
     bool is_node = false;
 
     if (a->grad || b->grad) {
@@ -9596,6 +9596,7 @@ static void ggml_compute_forward_mul_mat(
         const struct ggml_tensor * src0,
         const struct ggml_tensor * src1,
               struct ggml_tensor * dst) {
+    // printf("ggml_compute_forward_mul_mat\n");
     int64_t t0 = ggml_perf_time_us();
     UNUSED(t0);
 
@@ -9795,6 +9796,7 @@ static void ggml_compute_forward_mul_mat(
 
                 for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir011; ++ir0) {
                     vec_dot(ne00, &tmp[ir0 - iir0], src0_row + ir0*nb01, src1_col);
+                    // printf("tmp[%lld] = %f\n", ir0 - iir0, tmp[ir0 - iir0]);
                 }
                 memcpy(&dst_col[iir0], tmp, (MIN(iir0 + blck_0, ir011) - iir0)*sizeof(float));
             }
@@ -13853,6 +13855,7 @@ static void ggml_compute_forward_mul_mat_sparse_head(
         const struct ggml_tensor * src0,
         const struct ggml_tensor * src1,
               struct ggml_tensor * dst) {
+    // printf("ggml_compute_forward_mul_mat_sparse_head\n");
     int64_t t0 = ggml_perf_time_us();
     UNUSED(t0);
 
@@ -14028,6 +14031,7 @@ static void ggml_compute_forward_mul_mat_sparse(
         const struct ggml_tensor * src0,
         const struct ggml_tensor * src1,
               struct ggml_tensor * dst) {
+    // printf("Using Sparse in %s \n ",__func__);
     int64_t t0 = ggml_perf_time_us();
     UNUSED(t0);
 
@@ -14069,6 +14073,7 @@ static void ggml_compute_forward_mul_mat_sparse(
     //   compute by src0 rows
 
 #if defined(GGML_USE_CLBLAST)
+    printf("Using CLBLAST in %s \n ",__func__)
     if (ggml_cl_can_mul_mat(src0, src1, dst)) {
         // TODO: handle case when src0 is broadcast-able into src1 across 2nd,3rd dimension
         //       ref: https://github.com/ggerganov/ggml/pull/224
@@ -14083,6 +14088,7 @@ static void ggml_compute_forward_mul_mat_sparse(
 #endif
 
 #if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
+    printf("Using ACCELERATE or OPENBLASin %s \n ",__func__)
     if (ggml_compute_forward_mul_mat_use_blas(src0, src1, dst)) {
         if (params->ith != 0) {
             return;
@@ -14248,11 +14254,12 @@ static void ggml_compute_forward_mul_mat_sparse(
 
                     float *dst_col = (float *)((char *)dst->data + (i1 * nb1 + i2 * nb2 + i3 * nb3));
 
-                    // if (ffdata[ir0] <= 0.0f) {
+                    // if (ffdata[ir0] <= 0.0f) {  //是否可以移到前面
                     if (gid[ir0] == 1 || ffdata[ir0] < threshold) {
                         dst_col[ir0] = 0;
                         continue;
                     }
+                    // sleep(1000);
                     vec_dot(ne00, &dst_col[ir0], src0_row + ir0 * nb01, src1_col);
                 }
                 // }
@@ -14904,6 +14911,7 @@ static void ggml_compute_forward_mul_mat_axpy_head(
 /////////////////////////////////
 
 static void ggml_compute_forward(struct ggml_compute_params * params, struct ggml_tensor * tensor) {
+    // printf("ggml_compute_forward\n");
     GGML_ASSERT(params);
 
     if (tensor->op == GGML_OP_NONE) {
@@ -15009,7 +15017,8 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
                 ggml_compute_forward_group_norm(params, tensor->src[0], tensor);
             } break;
         case GGML_OP_MUL_MAT:
-            {
+                // printf("GGML_OP_MUL_MAT\n");
+
                 if (tensor->src[2] != NULL) {
                     int num = tensor->src[2]->ne[0];
                     if (num > 1000) {
@@ -15025,6 +15034,8 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
                     } 
                 }
                 else
+            {       
+                // printf("tensor->src[2] == NULL\n");
                     ggml_compute_forward_mul_mat(params, tensor->src[0], tensor->src[1], tensor);
             } break;
         case GGML_OP_AXPY:
@@ -15746,7 +15757,8 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
             } break;
         case GGML_OP_MUL_MAT:
         case GGML_OP_AXPY:
-            {
+            {   
+                // printf("GGML_OP_MUL_MAT %s\n",__func__);
                 // https://cs231n.github.io/optimization-2/#staged
                 // # forward pass
                 // s0 = np.random.randn(5, 10)
@@ -16798,7 +16810,8 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
                 n_tasks = n_threads;
             } break;
         case GGML_OP_MUL_MAT:
-            {
+            {   
+                // printf("GGML_OP_MUL_MAT %s\n",__func__);
                 n_tasks = n_threads;
 
                 // TODO: use different scheduling for different matrix sizes
@@ -17085,6 +17098,7 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
 
 
 static thread_ret_t ggml_graph_compute_thread_hybrid(void * data) {
+    // printf("ggml_graph_compute_thread_hybrid\n");
     struct ggml_compute_state * state = (struct ggml_compute_state *) data;
 
     const struct ggml_cgraph * cgraph = state->shared->cgraph;
@@ -17106,8 +17120,10 @@ static thread_ret_t ggml_graph_compute_thread_hybrid(void * data) {
     while (true) {
         if (cplan->abort_callback && cplan->abort_callback(cplan->abort_callback_data)) {
             state->shared->node_n += 1;
+            // printf("abort_callback\n");
             return (thread_ret_t) GGML_EXIT_ABORTED;
         }
+        // printf("state->ith = %d \n ",state->ith);
         if (state->ith == 0)
         {
             // atomic_fetch_sub(&state->shared->n_active, 1);
@@ -17115,19 +17131,25 @@ static thread_ret_t ggml_graph_compute_thread_hybrid(void * data) {
             // return 0;
 
             while (1)
-            {
+            {   
+                // printf("start\n");
                 state->shared->perf_node_start_cycles  = ggml_perf_cycles();
                 state->shared->perf_node_start_time_us = ggml_perf_time_us();
+                // printf("end\n");
                 node_n = node_n + 1;
                 if (node_n >= cgraph->n_nodes)
                     return 0;
                 struct ggml_tensor *node = cgraph->nodes[node_n];
                 if (node->backend == GGML_BACKEND_CPU)
-                    continue;
-                // uint64_t dbug = 0;
-                while (1)
                 {
-                    // dbug++;
+                    // printf("node->backend == GGML_BACKEND_CPU\n");
+                    continue;
+                }
+                // printf("1\n");
+                uint64_t dbug = 0;
+                while (1)
+                {   
+                    dbug++;
                     int status0 = atomic_load(&node->src[0]->is_finish);
                     int status1 = 1;
                     int status2 = 1;
@@ -17135,11 +17157,11 @@ static thread_ret_t ggml_graph_compute_thread_hybrid(void * data) {
                         status1 = atomic_load(&node->src[1]->is_finish);
                     if (node->src[2] != NULL)
                         status2 = atomic_load(&node->src[2]->is_finish);
-                    // if (dbug > 10000000) {
-                    //     printf("stuck %s thread %d\n", ggml_get_name(node), n_threads);
-                    //     int k;
-                    //     scanf("%d", &k);
-                    // }
+                    if (dbug > 10000000) {
+                        // printf("stuck %s thread %d\n", ggml_get_name(node), n_threads);
+                        int k;
+                        // scanf("%d", &k);
+                    }
                     if (status0 == 1 && status1 == 1 && status2 == 1)
                     {
                         break;
@@ -17155,8 +17177,6 @@ static thread_ret_t ggml_graph_compute_thread_hybrid(void * data) {
                     /*.wdata =*/0,
                     /*.aic   =*/0,
                 };
-
-
                 // printf("GPU %s\n", ggml_get_name(node));
                 // cudaDeviceSynchronize();
                 ggml_compute_forward(&params, node);
@@ -17168,6 +17188,7 @@ static thread_ret_t ggml_graph_compute_thread_hybrid(void * data) {
                 atomic_store(&node->is_finish, 1);
             }
         }
+        // printf("atomic_fetch_sub(&state->shared->n_active, 1)= %d\n", atomic_fetch_sub(&state->shared->n_active, 1));
         if (atomic_fetch_sub(&state->shared->n_active, 1) == 1) {
             // all other threads are finished and spinning
             // do finalize and init here so we don't have synchronize again
@@ -17192,6 +17213,8 @@ static thread_ret_t ggml_graph_compute_thread_hybrid(void * data) {
             }
 
             // distribute new work or execute it direct if 1T
+            // printf("node_n %d\n", node_n);
+            // printf("cgraph->n_nodes %d\n", cgraph->n_nodes);
             while (++node_n < cgraph->n_nodes) {
                 GGML_PRINT_DEBUG_5("%s: %d/%d\n", __func__, node_n, cgraph->n_nodes);
 
@@ -17223,7 +17246,7 @@ static thread_ret_t ggml_graph_compute_thread_hybrid(void * data) {
                     params.type = GGML_TASK_INIT;
                     ggml_compute_forward(&params, node);
                 }
-
+                // printf("n_tasks %d\n", n_tasks);
                 if (n_tasks == 1) {
                     // TODO: maybe push node_n to the atomic but if other threads see n_tasks is 1,
                     // they do something more efficient than spinning (?)
@@ -17335,7 +17358,8 @@ struct ggml_cplan ggml_graph_plan(struct ggml_cgraph * cgraph, int n_threads) {
                     }
                 } break;
             case GGML_OP_MUL_MAT:
-                {
+                {   
+                    // printf("GGML_OP_MUL_MAT %s\n",__func__);
                     const enum ggml_type vec_dot_type = type_traits[node->src[0]->type].vec_dot_type;
 
 #if defined(GGML_USE_CLBLAST)
@@ -17484,6 +17508,7 @@ struct ggml_cplan ggml_graph_plan(struct ggml_cgraph * cgraph, int n_threads) {
 }
 
 int ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cplan * cplan) {
+    // printf("%s\n",__funs__);
     {
         GGML_ASSERT(cplan);
         GGML_ASSERT(cplan->n_threads > 0);
@@ -17550,8 +17575,12 @@ int ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cplan * cplan) {
     // this is a work thread too
 
 #ifdef GGML_USE_CUBLAS
+    // printf("GGML_USE_CUBLAS %s\n", __func__);
+    // sleep(100);
     int compute_status = (size_t) ggml_graph_compute_thread_hybrid(&workers[0]);
 #else
+    // printf("UNGGML_USE_CUBLAS %s\n", __func__);
+    // sleep(100);
     int compute_status = (size_t) ggml_graph_compute_thread(&workers[0]);
 #endif
 
@@ -17587,6 +17616,7 @@ int ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cplan * cplan) {
 }
 
 void ggml_graph_compute_with_ctx(struct ggml_context * ctx, struct ggml_cgraph * cgraph, int n_threads) {
+    printf("ggml_graph_compute_with_ctx\n");
     struct ggml_cplan cplan = ggml_graph_plan(cgraph, n_threads);
 
     struct ggml_object * obj = ggml_new_object(ctx, GGML_OBJECT_WORK_BUFFER, cplan.work_size);

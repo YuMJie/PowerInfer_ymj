@@ -154,7 +154,7 @@ int main(int argc, char ** argv) {
 
     LOG_TEE("%s: build = %d (%s)\n",      __func__, LLAMA_BUILD_NUMBER, LLAMA_COMMIT);
     LOG_TEE("%s: built with %s for %s\n", __func__, LLAMA_COMPILER, LLAMA_BUILD_TARGET);
-
+    LOG_TEE(" llama version =\n");
     if (params.seed == LLAMA_DEFAULT_SEED) {
         params.seed = time(NULL);
     }
@@ -177,7 +177,10 @@ int main(int argc, char ** argv) {
 
     // load the model and apply lora adapter, if any
     LOG("%s: load the model and apply lora adapter, if any\n", __func__);
+    printf("Loading model...\n");
     std::tie(model, ctx) = llama_init_from_gpt_params(params);
+    printf("Model loaded\n");//模型已经加载到GPU中
+    // sleep(100);
     if (sparams.cfg_scale > 1.f) {
         struct llama_context_params lparams = llama_context_params_from_gpt_params(params);
         ctx_guidance = llama_new_context_with_model(model, lparams);
@@ -417,7 +420,7 @@ int main(int argc, char ** argv) {
     LOG_TEE("sampling: \n%s\n", llama_sampling_print(sparams).c_str());
     LOG_TEE("generate: n_ctx = %d, n_batch = %d, n_predict = %d, n_keep = %d\n", n_ctx, params.n_batch, params.n_predict, params.n_keep);
     LOG_TEE("\n\n");
-
+    // end of prompt processing
     if (params.interactive) {
         const char *control_message;
         if (params.multiline_input) {
@@ -453,7 +456,7 @@ int main(int argc, char ** argv) {
 
     // the first thing we will do is to output the prompt, so set color accordingly
     console::set_display(console::prompt);
-
+    
     std::vector<llama_token> embd;
     std::vector<llama_token> embd_guidance;
 
@@ -534,7 +537,7 @@ int main(int argc, char ** argv) {
 
             // evaluate tokens in batches
             // embd is typically prepared beforehand to fit within a batch, but not always
-            if (ctx_guidance) {
+            if (ctx_guidance) {  //false
                 int input_size = 0;
                 llama_token * input_buf = NULL;
 
@@ -560,10 +563,10 @@ int main(int argc, char ** argv) {
                     input_buf  = embd.data();
                     input_size = embd.size();
                 }
-
+                printf("ctx_guidance_decode\n");
                 for (int i = 0; i < input_size; i += params.n_batch) {
                     int n_eval = std::min(input_size - i, params.n_batch);
-                    if (llama_decode(ctx_guidance, llama_batch_get_one(input_buf + i, n_eval, n_past_guidance, 0))) {
+                    if (llama_decode(ctx_guidance, llama_batch_get_one(input_buf + i, n_eval, n_past_guidance, 0))) { //eval
                         LOG_TEE("%s : failed to eval\n", __func__);
                         return 1;
                     }
@@ -580,7 +583,7 @@ int main(int argc, char ** argv) {
 
                 LOG("eval: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd).c_str());
 
-                if (llama_decode(ctx, llama_batch_get_one(&embd[i], n_eval, n_past, 0))) {
+                if (llama_decode(ctx, llama_batch_get_one(&embd[i], n_eval, n_past, 0))) {  //decode输出logits
                     LOG_TEE("%s : failed to eval\n", __func__);
                     return 1;
                 }
@@ -608,8 +611,8 @@ int main(int argc, char ** argv) {
                 LOG("saved session to %s\n", path_session.c_str());
             }
 
-            const llama_token id = llama_sampling_sample(ctx_sampling, ctx, ctx_guidance);
-
+            const llama_token id = llama_sampling_sample(ctx_sampling, ctx, ctx_guidance); //decode后，根据logits进行采样生成token的id
+            // printf("llama_sampling_sample_id = %d\n", id);
             llama_sampling_accept(ctx_sampling, ctx, id, true);
 
             LOG("last: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, ctx_sampling->prev).c_str());
@@ -623,12 +626,13 @@ int main(int argc, char ** argv) {
             --n_remain;
 
             LOG("n_remain: %d\n", n_remain);
-        } else {
+        } else { //prompt阶段
             // some user input remains from prompt or interaction, forward it to processing
             LOG("embd_inp.size(): %d, n_consumed: %d\n", (int) embd_inp.size(), n_consumed);
             while ((int) embd_inp.size() > n_consumed) {
+                // printf("embd.size() = %d\n", (int) embd.size());
                 embd.push_back(embd_inp[n_consumed]);
-
+                // printf("embd_inp[%d]=%d\n", n_consumed, embd_inp[n_consumed]);
                 // push the prompt in the sampling context in order to apply repetition penalties later
                 // for the prompt, we don't apply grammar rules
                 llama_sampling_accept(ctx_sampling, ctx, embd_inp[n_consumed], false);
@@ -639,12 +643,14 @@ int main(int argc, char ** argv) {
                 }
             }
         }
-
         // display text
         if (input_echo) {
+            // printf("embd.size() = %d\n", (int) embd.size()); size-1 
             for (auto id : embd) {
+                //id对应着token
                 const std::string token_str = llama_token_to_piece(ctx, id);
-                printf("%s", token_str.c_str());
+                printf("%s", token_str.c_str()); //输出每一个token
+                // printf("%d", id); //输出每一个token
 
                 if (embd.size() > 1) {
                     input_tokens.push_back(id);

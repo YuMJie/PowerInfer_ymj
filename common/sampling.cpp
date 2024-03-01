@@ -98,7 +98,7 @@ std::string llama_sampling_print(const llama_sampling_params & params) {
 
     return std::string(result);
 }
-
+//采样的函数
 llama_token llama_sampling_sample(
                   struct llama_sampling_context * ctx_sampling,
                   struct llama_context * ctx_main,
@@ -107,7 +107,6 @@ llama_token llama_sampling_sample(
     const llama_sampling_params & params = ctx_sampling->params;
 
     const int n_vocab = llama_n_vocab(llama_get_model(ctx_main));
-
     const float   temp            = params.temp;
     const int32_t top_k           = params.top_k <= 0 ? n_vocab : params.top_k;
     const float   top_p           = params.top_p;
@@ -127,12 +126,16 @@ llama_token llama_sampling_sample(
     auto & cur  = ctx_sampling->cur;
 
     llama_token id = 0;
-
+    // printf("idx:%d\n",idx); 0
     float * logits = llama_get_logits_ith(ctx_main, idx);
+
+    // printf("logits[0]:%f\n",logits[0]);
+    // printf("logits[1]:%f\n",logits[1]);
 
     // apply params.logit_bias map
     for (auto it = params.logit_bias.begin(); it != params.logit_bias.end(); it++) {
         logits[it->first] += it->second;
+        printf("logits[%d]:%f\n",it->first,logits[it->first]-it->second);
     }
 
     cur.clear();
@@ -146,6 +149,7 @@ llama_token llama_sampling_sample(
     if (ctx_cfg) {
         llama_sample_classifier_free_guidance(ctx_main, &cur_p, ctx_cfg, params.cfg_scale);
     }
+
 
     // apply penalties
     if (!prev.empty()) {
@@ -211,7 +215,7 @@ llama_token llama_sampling_sample(
             LOG("sampled token: %5d: '%s'\n", id, llama_token_to_piece(ctx_main, id).c_str());
         }
     }
-
+    // printf("logits[id]:%f\n",logits[id]);
     return id;
 }
 

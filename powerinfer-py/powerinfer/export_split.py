@@ -22,7 +22,7 @@ def append_gpu_idx(gguf: GGUFWriter, i_layer: int, activation, select_count) -> 
     _, indices = torch.topk(activation, k=int(select_count))
     gpu_idx = torch.zeros_like(activation)
     gpu_idx[indices] = 1
-    gpu_idx = gpu_idx.numpy().astype(np.int32)
+    gpu_idx = gpu_idx.numpy().astype(np.int32) #GPU_IDX是一个0-1的向量，1表示被选中，即经常激活的神经元
     key = f"blk.{i_layer}.gpu_idx"
     print(
         f"{key} => {key} {gpu_idx.shape} {gpu_idx.dtype} {gpu_idx.nbytes/1024/1024} MiB"
@@ -35,11 +35,13 @@ def append_gpu_idx(gguf: GGUFWriter, i_layer: int, activation, select_count) -> 
     )
 
     indices = indices.numpy().astype(np.int32)
-    gpu_bucket = np.sort(indices)
+
+    gpu_bucket = np.sort(indices)  #GPU_BUCKET是按索引顺序从小到大排序后的索引
     key = f"blk.{i_layer}.gpu_bucket"
     print(
         f"{key} => {key} {gpu_bucket.shape} {gpu_bucket.dtype} {gpu_bucket.nbytes/1024/1024} MiB"
     )
+    # print("indices[0]:",gpu_bucket[:30])
     gguf.add_tensor(
         name=key,
         tensor=gpu_bucket,
@@ -47,7 +49,7 @@ def append_gpu_idx(gguf: GGUFWriter, i_layer: int, activation, select_count) -> 
         raw_dtype=GGMLQuantizationType.I32,
     )
 
-def export_split(activations_path: str, output_path: str, solved_list: list[int], vram_capacity: int):
+def export_split(activations_path: str, output_path: str, solved_list, vram_capacity):
     predictors = load_activation_weights(Path(activations_path)) # predictor => activation acount
     gguf_out = GGUFWriter(output_path, "generic.gpu_index")
     for i, (activation, selected_count) in enumerate(zip(predictors, solved_list)):

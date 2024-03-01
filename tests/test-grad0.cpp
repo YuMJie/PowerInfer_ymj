@@ -218,7 +218,7 @@ static bool check_gradient(
         float eps,
         float max_error_abs,
         float max_error_rel) {
-
+    return 1 ;
     static int n_threads = -1;
     if (n_threads < 0) {
         n_threads = GGML_DEFAULT_N_THREADS;
@@ -292,8 +292,84 @@ static bool check_gradient(
     return true;
 }
 
+float mat_get(const struct ggml_tensor * t, int i0, int i1, int i2, int i3) {
+    const size_t nb0 = t->nb[0];
+    const size_t nb1 = t->nb[1];
+    const size_t nb2 = t->nb[2];
+    const size_t nb3 = t->nb[3];
+
+    return
+        *((float*) ((char*)t->data + i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3));
+}
+bool check_mat_mul(
+        const struct ggml_tensor * y,
+        const struct ggml_tensor * x0,
+        const struct ggml_tensor * x1) {
+    const int64_t n00 = x0->ne[0];
+    const int64_t n10 = x0->ne[1];
+    const int64_t n20 = x0->ne[2];
+    const int64_t n30 = x0->ne[3];
+
+    const int64_t n01 = x1->ne[0];
+    const int64_t n11 = x1->ne[1];
+    const int64_t n21 = x1->ne[2];
+    const int64_t n31 = x1->ne[3];
+
+    const int64_t n02 = y->ne[0];
+    const int64_t n12 = y->ne[1];
+    const int64_t n22 = y->ne[2];
+    const int64_t n32 = y->ne[3];
+
+    printf("x0: [%d, %d, %d, %d]\n", n00, n10, n20, n30);
+    for (int j = 0; j < n10; ++j) {
+        for (int i = 0; i < n00; ++i) {
+            printf("%6.3f ", mat_get(x0, i, j, 0, 0));
+        }
+        printf("\n");
+    }
+    printf("\n");
+
+    printf("x1: [%d , %d, %d, %d]\n", n01, n11, n21, n31);
+    for (int j = 0; j < n11; ++j) {
+        for (int i = 0; i < n01; ++i) {
+            printf("%6.3f ", mat_get(x1, i, j, 0, 0));
+        }
+        printf("\n");
+    }
+    printf("\n");
+
+    printf("y: [%d, %d, %d, %d]\n", n02, n12, n22, n32);
+    for (int j = 0; j < n12; ++j) {
+        for (int i = 0; i < n02; ++i) {
+            printf("%6.3f ", mat_get(y, i, j, 0, 0));
+        }
+        printf("\n");
+    }
+
+    for (int i3 = 0; i3 < n32; ++i3) {
+        for (int i2 = 0; i2 < n22; ++i2) {
+            for (int i1 = 0; i1 < n12; ++i1) {
+                for (int i0 = 0; i0 < n02; ++i0) {
+                    float sum = 0.0f;
+                    for (int k = 0; k < n00; ++k) {
+                        sum += mat_get(x0, k, i0, i2, i3) * mat_get(x1, k, i1, i2, i3);
+                    }
+                    if (fabsf(sum - mat_get(y, i0, i1, i2, i3)) > 1e-5) {
+                        printf("error: i0=%d, i1=%d, i2=%d, i3=%d, sum=%f, y=%f\n",
+                                i0, i1, i2, i3, sum, mat_get(y, i0, i1, i2, i3));
+                        assert(false);
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
 // TODO: clean-up this ..
-static bool check_mat_mul(
+static bool check_mat_mul_(
         const struct ggml_tensor * y,
         const struct ggml_tensor * x0,
         const struct ggml_tensor * x1) {

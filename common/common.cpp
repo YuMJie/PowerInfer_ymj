@@ -970,6 +970,8 @@ std::tuple<struct llama_model *, struct llama_context *> llama_init_from_gpt_par
     }
 
     llama_context * lctx = llama_new_context_with_model(model, cparams);
+    // sleep(10);
+
     if (lctx == NULL) {
         fprintf(stderr, "%s: error: failed to create context with model '%s'\n", __func__, params.model.c_str());
         llama_free_model(model);
@@ -1002,7 +1004,6 @@ std::tuple<struct llama_model *, struct llama_context *> llama_init_from_gpt_par
 
     {
         LOG("warming up the model with an empty run\n");
-
         std::vector<llama_token> tmp = { llama_token_bos(model), llama_token_eos(model), };
         llama_decode(lctx, llama_batch_get_one(tmp.data(), std::min(tmp.size(), (size_t) params.n_batch), 0, 0));
         llama_kv_cache_clear(lctx);
