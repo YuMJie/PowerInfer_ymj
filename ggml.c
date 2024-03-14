@@ -23,7 +23,6 @@
 #include <limits.h>
 #include <stdarg.h>
 #include <signal.h>
-
 // #define _GNU_SOURCE
 // #include <sched.h>
 
@@ -14028,15 +14027,26 @@ static void ggml_compute_forward_mul_mat_sparse_head(
 
 }
 
+void output_dim_name(const struct ggml_tensor * cur)
+{
+    printf("name =%s ,dim = %d,%d,%d,%d\n",cur->name,cur->ne[0],cur->ne[1],cur->ne[2],cur->ne[3]);
+}
+
 static void ggml_compute_forward_mul_mat_sparse( //执行稀疏矩阵乘法
         const struct ggml_compute_params * params,
         const struct ggml_tensor * src0,
         const struct ggml_tensor * src1,
               struct ggml_tensor * dst) {
     // printf("Using Sparse in %s \n ",__func__);
+    long long count=0;
     int64_t t0 = ggml_perf_time_us();
     UNUSED(t0);
-
+    // printf("scr0: ");
+    // output_dim_name(src0);
+    // printf("scr1: ");
+    // output_dim_name(src1);
+    // printf("dst: ");
+    // output_dim_name(dst);
     GGML_TENSOR_BINARY_OP_LOCALS;
 
     const int ith = params->ith;
@@ -14144,6 +14154,7 @@ static void ggml_compute_forward_mul_mat_sparse( //执行稀疏矩阵乘法
 #endif
 
     if (params->type == GGML_TASK_INIT) {
+        // printf("GGML_TASK_INIT\n");
         if (src1->type != vec_dot_type) {
             char * wdata = params->wdata;
             const size_t row_size = ne10*ggml_type_size(vec_dot_type)/ggml_blck_size(vec_dot_type);
@@ -14223,8 +14234,8 @@ static void ggml_compute_forward_mul_mat_sparse( //执行稀疏矩阵乘法
         {
             for (int64_t iir1 = ir110; iir1 < ir111; iir1 += blck_1)
             {
-                    if (ir0 > nr0)
-                        break;
+                if (ir0 > nr0)
+                    break;
                 // for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck_0) {
                 // for (int64_t iir0 = ir010; iir0 < ir011;) {
                 for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir111; ++ir1)
@@ -14232,7 +14243,13 @@ static void ggml_compute_forward_mul_mat_sparse( //执行稀疏矩阵乘法
                     const int64_t i13 = (ir1 / (ne12 * ne11));
                     const int64_t i12 = (ir1 - i13 * ne12 * ne11) / ne11;
                     const int64_t i11 = (ir1 - i13 * ne12 * ne11 - i12 * ne11);
-
+                    ffdata = (float *)((char *)predictor_data + (i11+ i12*ne11 + i13*ne12*ne11)*predictor_row_size);
+                    float *dst_col = (float *)((char *)dst->data + (i11 * nb1 + i12 * nb2 + i13 * nb3));
+                    // printf("dst_col.size()=%d",_msize(dst_col));
+                    if (gid[ir0] == 1 || ffdata[ir0] < threshold) {
+                        dst_col[ir0] = 0;
+                        continue;
+                    }
                     // broadcast src0 into src1
                     const int64_t i03 = i13 / r3;
                     const int64_t i02 = i12 / r2;
@@ -14251,16 +14268,15 @@ static void ggml_compute_forward_mul_mat_sparse( //执行稀疏矩阵乘法
                                            (src1_cont || src1->type != vec_dot_type
                                                 ? (i11 + i12 * ne11 + i13 * ne12 * ne11) * row_size
                                                 : (i11 * nb11 + i12 * nb12 + i13 * nb13));
-                    ffdata = (float *)((char *)predictor_data + (i11      + i12*ne11 + i13*ne12*ne11)*predictor_row_size);
                     // printf("ith %d row %d ir1 %d %d %d %d %d\n", ith, ir0, ir1, src1_col-(char *)wdata, ffdata-predictor_data, predictor_row_size, dst->src[2]->ne[1]);
 
-                    float *dst_col = (float *)((char *)dst->data + (i1 * nb1 + i2 * nb2 + i3 * nb3));
-
+                    // ++count;    
                     // if (ffdata[ir0] <= 0.0f) {  //是否可以移到前面
-                    if (gid[ir0] == 1 || ffdata[ir0] < threshold) {
-                        dst_col[ir0] = 0;
-                        continue;
-                    }
+                    // if (gid[ir0] == 1 || ffdata[ir0] < threshold) {
+                    //     dst_col[ir0] = 0;
+                    //     continue;
+                    // }
+                    // printf("dst_col = %f \n",dst_col[ir0]);
                     // sleep(1000);
                     vec_dot(ne00, &dst_col[ir0], src0_row + ir0 * nb01, src1_col);
                 }
@@ -14273,7 +14289,7 @@ static void ggml_compute_forward_mul_mat_sparse( //执行稀疏矩阵乘法
         
     }
     // printf("total %d\n", total);
-
+    // printf("count : %lld \n",count);
     // int predictor_cpu = 0;
     // int predictor = 0;
     // for (int i = 0; i < 9216 *4 ; i++) {
