@@ -180,17 +180,21 @@ int main(int argc, char ** argv) {
     printf("Loading model...\n");
     std::tie(model, ctx) = llama_init_from_gpt_params(params);
     printf("Model loaded\n");//模型已经加载到GPU中
+    printf("%f",sparams.cfg_scale);
     // sleep(100);
     if (sparams.cfg_scale > 1.f) {
+        printf("llama_scale_model\n");
         struct llama_context_params lparams = llama_context_params_from_gpt_params(params);
+        printf("ctx_guidance = llama_new_context_with_model(model, lparams)\n");
         ctx_guidance = llama_new_context_with_model(model, lparams);
+        printf("ctx_guidance created\n");
     }
 
     if (model == NULL) {
         LOG_TEE("%s: error: unable to load model\n", __func__);
         return 1;
     }
-
+    printf("start_n_ctx_train\n");
     const int n_ctx_train = llama_n_ctx_train(model);
     const int n_ctx = llama_n_ctx(ctx);
     LOG("n_ctx: %d\n", n_ctx);

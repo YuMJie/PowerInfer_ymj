@@ -1200,7 +1200,6 @@ static void ggml_vec_dot_f16(const int n, float * restrict s, ggml_fp16_t * rest
         for (int j = 0; j < GGML_F16_ARR; j++) {
             ax[j] = GGML_F16_VEC_LOAD(x + i + j*GGML_F16_EPR, j);
             ay[j] = GGML_F16_VEC_LOAD(y + i + j*GGML_F16_EPR, j);
-
             sum[j] = GGML_F16_VEC_FMA(sum[j], ax[j], ay[j]);
         }
     }
@@ -4127,6 +4126,9 @@ struct ggml_tensor * ggml_mul_mat_special(
 
     return result;
 }
+
+
+
 // ggml_mul_mat_idx for CPU and axpy in GPU
 struct ggml_tensor * ggml_mul_mat_idx(
         struct ggml_context * ctx,
@@ -14026,7 +14028,7 @@ static void ggml_compute_forward_mul_mat_sparse_head(
 
 }
 
-static void ggml_compute_forward_mul_mat_sparse(
+static void ggml_compute_forward_mul_mat_sparse( //执行稀疏矩阵乘法
         const struct ggml_compute_params * params,
         const struct ggml_tensor * src0,
         const struct ggml_tensor * src1,

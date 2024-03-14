@@ -2119,7 +2119,7 @@ struct llama_model_loader {
             //     ffn_in_cpu += ggml_nbytes(cur);
             //     cur->backend = GGML_BACKEND_CPU;
             // }
-            printf("cur->name = %s , backend = %d \n"  , cur->name , cur->backend);
+            // printf("cur->name = %s , backend = %d \n"  , cur->name , cur->backend);
             GGML_ASSERT(cur); // unused tensors should have been caught by load_data already
 
             if (progress_callback) {
@@ -2865,10 +2865,10 @@ struct llama_augmentation_model_loader {
         ggml_tensor * gpu_idx = layer.gpu_idx;
         ggml_tensor *gpu_bucket = layer.gpu_bucket;
         size_t offloaded_bytes = 0;
-        printf("gpu_idx_size");
-        printf_tensor_size(gpu_idx);
-        printf("gpu_bucket_size");
-        printf_tensor_size(gpu_bucket);
+        // printf("gpu_idx_size");
+        // printf_tensor_size(gpu_idx);
+        // printf("gpu_bucket_size");
+        // printf_tensor_size(gpu_bucket);
         layer.ffn_gate_gpu = create_striped_mat_to_gpu(layer.ffn_gate, gpu_bucket); //将一些在cpu上的ffn_gate按行列分割后放到gpu上
         layer.ffn_up_gpu = create_striped_mat_to_gpu(layer.ffn_up, gpu_bucket);
         layer.ffn_down_gpu = create_striped_mat_to_gpu(layer.ffn_down_t, gpu_bucket);
@@ -2993,9 +2993,9 @@ struct buffered_tensor_allocator {
                 }
             }
         }
-        // printf("num_offloaded_layers: %d\n", num_offloaded_layers); 
-        // printf("offloaded_layers: %d\n", offloaded_layers); 
-        ml.done_getting_tensors();
+        printf("num_offloaded_layers: %d\n", num_offloaded_layers); 
+        printf("offloaded_layers: %d\n", offloaded_layers); 
+        // ml.done_getting_tensors();  尝试不让检查
         return offloaded_layers;
 #else // GGML_USE_CUBLAS
         return 0;
@@ -3148,6 +3148,7 @@ static void llm_load_sparse_model_tensors(
     auto create_tensor = [&alloc, &current_layer] (
         const std::pair<std::string, llm_tensor> & tn, 
         const std::vector<int64_t> & ne) -> ggml_tensor * {
+        printf("tn.second=%d\n", tn.second);
         return alloc.buffered_alloc(tn.first, tn.second, ne, current_layer);
     };
 
@@ -3185,6 +3186,230 @@ static void llm_load_sparse_model_tensors(
                         layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "weight", i), {n_embd, n_embd_gqa});
                         layer.wv = create_tensor(tn(LLM_TENSOR_ATTN_V,   "weight", i), {n_embd, n_embd_gqa});
                         layer.wo = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "weight", i), {n_embd, n_embd});
+
+                        layer.ffn_norm = create_tensor(tn(LLM_TENSOR_FFN_NORM, "weight", i), {n_embd});
+
+                        layer.ffn_gate = create_tensor(tn(LLM_TENSOR_FFN_GATE, "weight", i), {n_embd,   n_ff});
+                        layer.ffn_down_t = create_tensor(tn(LLM_TENSOR_FFN_DOWN_T, "weight", i), {n_embd, n_ff});
+                        layer.mlp_pre_w1 = create_tensor(tn(LLM_TENSOR_MLP_PRED_FC1, "weight", i), {n_embd, GGML_NE_WILDCARD});
+                        layer.mlp_pre_w2 = create_tensor(tn(LLM_TENSOR_MLP_PRED_FC2, "weight", i), {GGML_NE_WILDCARD, n_ff});
+                        layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   n_ff});
+                        // if(current_layer==30)
+                        // {
+                        //     sleep(1000);
+                        // }
+                    }
+                    // for(int i = 0;i<n_layer;i++)
+                    // {   auto & layer = model.layers[i];
+                    //     layer.ffn_norm = create_tensor(tn(LLM_TENSOR_FFN_NORM, "weight", i), {n_embd});
+                    //     layer.ffn_gate = create_tensor(tn(LLM_TENSOR_FFN_GATE, "weight", i), {n_embd,   n_ff});
+                    //     layer.ffn_down_t = create_tensor(tn(LLM_TENSOR_FFN_DOWN_T, "weight", i), {n_embd, n_ff});
+                    //     layer.mlp_pre_w1 = create_tensor(tn(LLM_TENSOR_MLP_PRED_FC1, "weight", i), {n_embd, GGML_NE_WILDCARD});
+                    //     layer.mlp_pre_w2 = create_tensor(tn(LLM_TENSOR_MLP_PRED_FC2, "weight", i), {GGML_NE_WILDCARD, n_ff});
+                    //     layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   n_ff});
+                    // }
+                } break;
+            case LLM_ARCH_FALCON:
+                {   
+                    model.tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab});
+
+                    // output
+                    {
+                        model.output_norm   = create_tensor(tn(LLM_TENSOR_OUTPUT_NORM, "weight"), {n_embd});
+                        model.output_norm_b = create_tensor(tn(LLM_TENSOR_OUTPUT_NORM, "bias"),   {n_embd});
+                        model.output        = create_tensor(tn(LLM_TENSOR_OUTPUT,      "weight"), {n_embd, n_vocab});
+                    }
+
+                    const uint32_t n_ff = hparams.n_ff;
+
+                    model.layers.resize(n_layer);
+
+                    for (uint32_t &i = current_layer; i < n_layer; ++i) {
+                        auto & layer = model.layers[i];
+
+                        layer.attn_norm   = create_tensor(tn(LLM_TENSOR_ATTN_NORM,   "weight", i), {n_embd});
+                        layer.attn_norm_b = create_tensor(tn(LLM_TENSOR_ATTN_NORM,   "bias", i),   {n_embd});
+
+                        if (gguf_find_tensor(ml.ctx_gguf, tn(LLM_TENSOR_ATTN_NORM_2, "weight", i).first.c_str()) >= 0) {
+                            layer.attn_norm_2   = create_tensor(tn(LLM_TENSOR_ATTN_NORM_2, "weight", i), {n_embd});
+                            layer.attn_norm_2_b = create_tensor(tn(LLM_TENSOR_ATTN_NORM_2, "bias", i),   {n_embd});
+                        }
+
+                        layer.wqkv = create_tensor(tn(LLM_TENSOR_ATTN_QKV, "weight", i), {n_embd, n_embd + 2*n_embd_gqa});
+                        layer.wo   = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "weight", i), {n_embd, n_embd});
+                        layer.ffn_down_t = create_tensor(tn(LLM_TENSOR_FFN_DOWN_T, "weight", i), {n_embd, n_ff});
+                        layer.mlp_pre_w1 = create_tensor(tn(LLM_TENSOR_MLP_PRED_FC1, "weight", i), {n_embd, GGML_NE_WILDCARD});
+                        layer.mlp_pre_w2 = create_tensor(tn(LLM_TENSOR_MLP_PRED_FC2, "weight", i), {GGML_NE_WILDCARD, n_ff});
+                        layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   n_ff});
+                    }
+                } break;
+            default:
+                throw std::runtime_error("unknown architecture");
+        }
+    }
+
+    //对可以加载到GPU上神经元进行重新分配
+    printf("before flush\n");
+    model.n_gpu_layers = alloc.flush();
+    LLAMA_LOG_INFO("%s: offloaded layers from VRAM budget(%ld bytes): %d/%d\n", __func__, vram_budget_bytes, model.n_gpu_layers, hparams.n_layer);
+    printf("after flush\n");
+    // print memory requirements
+    {
+        // this is the total memory required to run the inference
+        size_t mem_required = ctx_size + mmapped_size;
+
+        LLAMA_LOG_INFO("%s: mem required  = %7.2f MB\n", __func__, mem_required / 1024.0 / 1024.0);
+
+#if defined(GGML_USE_CUBLAS) || defined(GGML_USE_CLBLAST)
+        LLAMA_LOG_INFO("%s: VRAM used: %.2f MB\n", __func__, alloc.vram_allocated_bytes / 1024.0 / 1024.0);
+#endif
+    }
+
+
+    // populate `tensors_by_name`
+    printf("start populate `tensors_by_name`\n");
+    for (int i = 0; i < ml.n_tensors; ++i) {
+        // printf("name=%s\n", ml.get_tensor_name(i));
+
+        struct ggml_tensor * cur = ggml_get_tensor(ctx, ml.get_tensor_name(i));
+        // printf("name=%s\n", ml.get_tensor_name(i));
+
+        // printf("ggml_get_tensor(ctx, ml.get_tensor_name(i));");
+        // sleep(8);
+        // printf("name2=%s \n", ggml_get_name(cur));
+        model.tensors_by_name.emplace_back(ggml_get_name(cur), cur);
+        // printf("model.tensors_by_name.emplace_back(ggml_get_name(cur), cur);");
+        // sleep(8);
+
+    }
+    printf("end populate `tensors_by_name`\n");
+    // printf("before load_all_data1\n");//618M
+    //根据ggml的上下文加载所有的数据，进行调度
+    ml.load_all_data(ctx, progress_callback, progress_callback_user_data, use_mlock ? &model.mlock_mmap : NULL);
+    // printf("after load_all_data\n");//6592M
+
+
+    if (progress_callback) {
+        progress_callback(1.0f, progress_callback_user_data);
+    }
+
+    model.mapping = std::move(ml.mapping);
+
+    if (cparams != NULL) {
+        llama_reserve_model_kv_cache(&model, cparams);
+    }
+
+    // Offload FFN segments to GPU if possible
+    model.ffn_offloaded_bytes = llm_load_gpu_split(ml, model, reset_gpu_index, disable_ffn_split);
+
+    // loading time will be recalculate after the first eval, so
+    // we take page faults deferred by mmap() into consideration
+    model.t_load_us = ggml_time_us() - model.t_start_us;
+}
+
+static void llm_load_sparse_model_tensors1(
+        llama_model_loader & ml,
+        llama_model & model,
+        const llama_context_params * cparams,
+        int main_gpu,
+        long int vram_budget_bytes,
+        bool reset_gpu_index,
+        bool disable_ffn_split,
+        bool use_mlock,
+        llama_progress_callback progress_callback,
+        void * progress_callback_user_data) {
+    model.t_start_us = ggml_time_us();
+    auto & ctx     = model.ctx;
+    auto & hparams = model.hparams;
+    printf("hparams.n_layer=%d\n", hparams.n_layer);
+    // hparams.n_layer-=10;
+    size_t ctx_size;
+    size_t mmapped_size;
+    ml.calc_sizes(ctx_size, mmapped_size);
+    LLAMA_LOG_INFO("%s: ggml ctx size = %7.2f MB\n", __func__, ctx_size/1024.0/1024.0);
+    
+    // create the ggml context
+    {
+        model.buf.resize(ctx_size);
+        if (use_mlock) {
+            model.mlock_buf.init   (model.buf.data);
+            model.mlock_buf.grow_to(model.buf.size);
+        }
+
+        struct ggml_init_params params = {
+            /*.mem_size   =*/ model.buf.size,
+            /*.mem_buffer =*/ model.buf.data,
+            /*.no_alloc   =*/ ml.use_mmap,
+        };
+
+        model.ctx = ggml_init(params);
+        if (!model.ctx) {
+            throw std::runtime_error(format("ggml_init() failed"));
+        }
+    }
+
+    (void) main_gpu;
+
+    enum ggml_backend_type llama_backend_offload = GGML_BACKEND_CPU;
+    enum ggml_backend_type llama_backend_offload_split = GGML_BACKEND_CPU;
+
+#ifdef GGML_USE_CUBLAS
+    if (ggml_cublas_loaded()) {
+        LLAMA_LOG_INFO("%s: using " GGML_CUDA_NAME " for GPU acceleration\n", __func__);
+        ggml_cuda_set_main_device(main_gpu);
+
+        llama_backend_offload = GGML_BACKEND_GPU;
+        llama_backend_offload_split = GGML_BACKEND_GPU_SPLIT;
+    }
+#elif defined(GGML_USE_CLBLAST)
+        LLAMA_LOG_INFO("%s: using OpenCL for GPU acceleration\n", __func__);
+        llama_backend_offload = GGML_BACKEND_GPU;
+        llama_backend_offload_split = GGML_BACKEND_GPU;
+#endif
+
+    buffered_tensor_allocator alloc(ml, ctx, hparams);
+    uint32_t current_layer = 0;
+    //决定分配到哪个设备，还没调度
+    auto create_tensor = [&alloc, &current_layer] (
+        const std::pair<std::string, llm_tensor> & tn, 
+        const std::vector<int64_t> & ne) -> ggml_tensor * {
+        return alloc.buffered_alloc(tn.first, tn.second, ne, current_layer);
+    };
+
+    {
+        const int64_t n_embd     = hparams.n_embd;
+        const int64_t n_embd_gqa = hparams.n_embd_gqa();
+        const int64_t n_layer    = hparams.n_layer;
+        const int64_t n_vocab    = hparams.n_vocab;
+
+        const auto tn = LLM_TN(model.arch);
+        // printf("model.arch=%d\n", model.arch);
+        //神经元进行重新分配
+        switch (model.arch) {
+            case LLM_ARCH_LLAMA:
+            case LLM_ARCH_REFACT:
+                {
+                    model.tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab});
+
+                    // output
+                     {   
+                        //printf("tn(LLM_TENSOR_OUTPUT_NORM, weight)=%s\n", tn(LLM_TENSOR_OUTPUT_NORM, "weight").first.c_str()); tn(LLM_TENSOR_OUTPUT_NORM, weight)=output_norm.weight
+                        // model.output_norm = create_tensor(tn(LLM_TENSOR_OUTPUT_NORM, "weight"), {n_embd});
+                        // model.output      = create_tensor(tn(LLM_TENSOR_OUTPUT,      "weight"), {n_embd, n_vocab});
+                    }
+
+                    const uint32_t n_ff = hparams.n_ff;
+                    model.layers.resize(n_layer);
+
+                    for (uint32_t &i = current_layer; i < n_layer; ++i) {
+                       auto & layer = model.layers[i];
+
+                        // layer.attn_norm = create_tensor(tn(LLM_TENSOR_ATTN_NORM, "weight", i), {n_embd});
+
+                        // layer.wq = create_tensor(tn(LLM_TENSOR_ATTN_Q,   "weight", i), {n_embd, n_embd});
+                        // layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "weight", i), {n_embd, n_embd_gqa});
+                        // layer.wv = create_tensor(tn(LLM_TENSOR_ATTN_V,   "weight", i), {n_embd, n_embd_gqa});
+                        // layer.wo = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "weight", i), {n_embd, n_embd});
 
                         layer.ffn_norm = create_tensor(tn(LLM_TENSOR_FFN_NORM, "weight", i), {n_embd});
 
@@ -3289,6 +3514,8 @@ static void llm_load_sparse_model_tensors(
     // we take page faults deferred by mmap() into consideration
     model.t_load_us = ggml_time_us() - model.t_start_us;
 }
+
+
 
 void llama_reserve_model_kv_cache(llama_model *model, const llama_context_params *cparams) {
 #if defined(GGML_USE_CUBLAS)
@@ -4042,7 +4269,52 @@ static void llm_load_tensors(
     model.t_load_us = ggml_time_us() - model.t_start_us;
 }
 
-static bool llama_model_load(const std::string & fname, llama_model & model, const llama_model_params & params, const llama_context_params * cparams) {
+void output_model_value(llama_model & model,int layer_id)
+{   
+    for(int j =0;j<layer_id;++j)
+    {
+            auto layer = model.layers[j];
+    if(layer.ffn_gate) {
+        void * data = layer.ffn_gate->data;
+        printf("layer_id:%d, data:%f\n",j,((float *)layer.ffn_gate->data)[0]);
+        printf("ffn_gate.ne = %d,%d,%d,%d\n", layer.ffn_gate->ne[0],layer.ffn_gate->ne[1],layer.ffn_gate->ne[2],layer.ffn_gate->ne[3]);
+        for(int i=0;i<3;++i)
+        {
+            printf("ffn_gate_data[%d] = %.15lf\n",i,((double *)layer.ffn_gate->data)[i]);
+        
+        }
+    }
+    if(layer.ffn_down && layer.ffn_down->data) {
+        printf("ffn_down is not null\n");
+        printf("ffn_down.ne = %d,%d,%d,%d\n", layer.ffn_down->ne[0],layer.ffn_down->ne[1],layer.ffn_down->ne[2],layer.ffn_down->ne[3]);
+        void * data = layer.ffn_down->data;
+        printf("ffn_down layer_id:%d, data:%.15lf\n",j,((double *)layer.ffn_down->data)[0]);
+        // printf("size of ((float *)data) =%d" ,malloc_usable_size(data) );
+    }
+    if(layer.ffn_up && layer.ffn_up->data) {
+        printf("ffn_up is not null\n");
+        void * data = layer.ffn_up->data;
+        printf("ffn_up.ne = %d,%d,%d,%d\n", layer.ffn_up->ne[0],layer.ffn_up->ne[1],layer.ffn_up->ne[2],layer.ffn_up->ne[3]);
+        for(int i=0;i<3;++i)
+        {
+            printf("ffn_up_data[%d] = %.15lf\n",i,((double *)layer.ffn_up->data)[i]);
+        
+        }
+        printf("ffn_up layer_id:%d, data:%f\n",j,((float *)layer.ffn_up->data)[0]);
+        // printf("size of ((float *)data) =%d" ,malloc_usable_size(data) );
+    }
+    }
+
+    // if(layer.) {
+    //     void * data = layer.ffn_up->data;
+    //     printf("ffn_dup layer_id:%d, data:%f\n",layer_id,((float *)layer.ffn_down->data)[0]);
+    //     // printf("size of ((float *)data) =%d" ,malloc_usable_size(data) );
+    // }
+    // printf("size of data:%d\n",sizeof(*(float *)data));
+}
+
+llama_model * sparse_model = new llama_model;
+static bool llama_sparse_model_load(const std::string & fname, llama_model & model, const llama_model_params & params, const llama_context_params * cparams) {
     try {
         // params.n_layer-=10;
         llama_model_loader ml(fname, params.use_mmap);
@@ -4059,7 +4331,6 @@ static bool llama_model_load(const std::string & fname, llama_model & model, con
         llm_load_vocab  (ml, model);
 
         llm_load_print_meta(ml, model);
-
         if (model.hparams.n_vocab != model.vocab.id_to_token.size()) {
             throw std::runtime_error("vocab size mismatch");
         }
@@ -4081,6 +4352,10 @@ static bool llama_model_load(const std::string & fname, llama_model & model, con
                 ml, model, cparams, params.main_gpu, vram_budget_bytes, params.reset_gpu_index, params.disable_gpu_index,
                 params.use_mlock, params.progress_callback, params.progress_callback_user_data
             );
+            // llm_load_sparse_model_tensors1(
+            //     ml, model, cparams, params.main_gpu, vram_budget_bytes, params.reset_gpu_index, params.disable_gpu_index,
+            //     params.use_mlock, params.progress_callback, params.progress_callback_user_data
+            // );
         } else {
             llm_load_tensors(
                 ml, model, params.n_gpu_layers, params.main_gpu, params.tensor_split, params.use_mlock,
@@ -4092,7 +4367,65 @@ static bool llama_model_load(const std::string & fname, llama_model & model, con
         LLAMA_LOG_ERROR("error loading model: %s\n", err.what());
         return false;
     }
+    // output_model_value(model,10);
 
+    return true;
+}
+static bool llama_model_load(const std::string & fname, llama_model & model, const llama_model_params & params, const llama_context_params * cparams) {
+    try {
+        // params.n_layer-=10;
+        llama_model_loader ml(fname, params.use_mmap);
+
+        if (ml.sparse_deriv == GGML_SPARSE_INFERENCE) {
+            LLAMA_LOG_INFO("%s: PowerInfer model loaded. Sparse inference will be used.\n", __func__);
+        }
+
+        model.hparams.vocab_only = params.vocab_only;
+        model.sparse_deriv = ml.sparse_deriv;
+
+        llm_load_arch   (ml, model);
+        llm_load_hparams(ml, model);
+        llm_load_vocab  (ml, model);
+
+        llm_load_print_meta(ml, model);
+        if (model.hparams.n_vocab != model.vocab.id_to_token.size()) {
+            throw std::runtime_error("vocab size mismatch");
+        }
+
+        if (params.vocab_only) {
+            LLAMA_LOG_INFO("%s: vocab only - skipping tensors\n", __func__);
+            return true;
+        }
+        //use vram budget if sparse inference is enabled
+        if (llama_use_sparse_inference(&model)) {
+            if (params.n_gpu_layers > 0) {
+                LLAMA_LOG_WARN("%s: sparse inference ignores n_gpu_layers, you can use --vram-budget option instead\n", __func__);
+                return false;
+            }
+#if defined GGML_USE_CUBLAS
+            llama_set_vram_budget(params.vram_budget_gb, params.main_gpu);
+#endif
+            llm_load_sparse_model_tensors(
+                ml, model, cparams, params.main_gpu, vram_budget_bytes, params.reset_gpu_index, params.disable_gpu_index,
+                params.use_mlock, params.progress_callback, params.progress_callback_user_data
+            );
+            // llm_load_sparse_model_tensors1(
+            //     ml, model, cparams, params.main_gpu, vram_budget_bytes, params.reset_gpu_index, params.disable_gpu_index,
+            //     params.use_mlock, params.progress_callback, params.progress_callback_user_data
+            // );
+        } else {
+            llm_load_tensors(
+                ml, model, params.n_gpu_layers, params.main_gpu, params.tensor_split, params.use_mlock,
+                params.progress_callback, params.progress_callback_user_data
+            );
+        }
+
+    } catch (const std::exception & err) {
+        LLAMA_LOG_ERROR("error loading model: %s\n", err.what());
+        return false;
+    }
+    // output_model_value(model,10);
+    llama_sparse_model_load(fname,*sparse_model,params,cparams);
     return true;
 }
 
@@ -4359,7 +4692,16 @@ static struct ggml_tensor * llm_build_ffn(
 
     return cur;
 }
-
+void output_value (ggml_tensor * cur)
+{
+    if(cur )
+    {
+        for(int i=0;i<4;++i)
+        {
+            printf("name:%s ,data:%.17lf\n",cur->name,((double *)cur->data)[i]);
+        }
+    }
+}
 static struct ggml_tensor * llm_build_ffn_sparse(
         struct ggml_context * ctx,
          struct ggml_tensor * cur,
@@ -4390,19 +4732,26 @@ static struct ggml_tensor * llm_build_ffn_sparse(
     ggml_tensor *idx_g = nullptr;
     ggml_tensor *cur_c = nullptr;
     ggml_tensor *third = nullptr;
-    
+
+    ggml_tensor * sparse_pre_w1 =sparse_model->layers[il].mlp_pre_w1;
+    ggml_tensor * sparse_pre_w2 =sparse_model->layers[il].mlp_pre_w2;
+
+
     //输出up_gpu和up的维度
 
 
 
     // prepare sparse idx
-    idx1 = ggml_mul_mat(ctx, pre_w1, pred_inpl);
+    idx1 = ggml_mul_mat(ctx, sparse_pre_w1, pred_inpl);
     // no offlaoad
     cb(idx, "mlp_pre_w1", il);
     idx = ggml_relu(ctx, idx1);
     cb(idx, "relu_pre", il);
-    idx = ggml_mul_mat(ctx, pre_w2, idx);
+    idx = ggml_mul_mat(ctx, sparse_pre_w2, idx);
     cb(idx, "mlp_pre_w2", il);
+    // output_value(down_t);
+    // output_value(pre_w1);
+    // output_value(pre_w2);
 
     // if(il == 9)
     // {   

@@ -4750,9 +4750,10 @@ static __global__ void dequantize_mul_mat_vec_sparse(const void * __restrict__ v
 #endif // GGML_CUDA_F16
     }
 }
-
+//稀疏矩阵乘法cuda
 template <int qk, int qr, dequantize_kernel_t dequantize_kernel>
-static __global__ void dequantize_mul_mat_batch_sparse(const void * __restrict__ vx, const dfloat * __restrict__ y, float * __restrict__ dst, const int ncols, const int nrows, int src1_cols, int dst_ne0,int * lst, float * idx) {
+static __global__ void dequantize_mul_mat_batch_sparse(const void * __restrict__ vx, const dfloat * __restrict__ y, float * __restrict__ dst, const int ncols, const int nrows, int src1_cols, int dst_ne0,int * lst, float * idx)
+ {
     // qk = quantized weights per x block
     // qr = number of quantized weights per data value in x block
     const int row = blockIdx.y*blockDim.y + threadIdx.y;
@@ -6864,11 +6865,11 @@ inline void ggml_cuda_op_rms_norm(
     (void) src1_dd;
 }
 
-inline void ggml_cuda_op_mul_mat_q(
+inline void ggml_cuda_op_mul_mat_q( //稀疏矩阵乘法
     const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst, const char * src0_dd_i, const float * src1_ddf_i,
     const char * src1_ddq_i, float * dst_dd_i, const int64_t row_low, const int64_t row_high, const int64_t src1_ncols,
     const int64_t src1_padded_row_size, const cudaStream_t & stream) {
-
+    // printf("%s", __func__);
     const int64_t ne00 = src0->ne[0];
 
     const int64_t ne10 = src1->ne[0];
@@ -6891,7 +6892,7 @@ inline void ggml_cuda_op_mul_mat_q(
         // dst_extra = (ggml_tensor_extra_gpu *) dst->src[3]->extra;
     }
 
-
+    // printf("src0->type %d\n", src0->type);1
     switch (src0->type) {
         case GGML_TYPE_Q4_0:
             if (dst->src[2] == NULL)
@@ -7020,7 +7021,7 @@ inline void ggml_cuda_op_mul_mat_vec_q(
     const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst, const char * src0_dd_i, const float * src1_ddf_i,
     const char * src1_ddq_i, float * dst_dd_i, const int64_t row_low, const int64_t row_high, const int64_t src1_ncols,
     const int64_t src1_padded_row_size, const cudaStream_t & stream) {
-
+    printf("%s",__func__);
     const int64_t ne00 = src0->ne[0];
     const int64_t ne10 = src1->ne[1];
     const int64_t row_diff = row_high - row_low;
@@ -8729,13 +8730,13 @@ static void ggml_cuda_mul_mat(const ggml_tensor * src0, const ggml_tensor * src1
             min_compute_capability = g_compute_capabilities[id];
         }
     }
-
+    
 #ifdef CUDA_USE_TENSOR_CORES
     const bool use_tensor_cores = true;
 #else
     const bool use_tensor_cores = false;
 #endif
-
+    // printf("%s: use_tensor_cores = %d\n", __func__, use_tensor_cores);1
     // debug helpers
     //printf("src0: %8d %8d %8d %8d\n", src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3]);
     //printf("      %8d %8d %8d %8d\n", src0->nb[0], src0->nb[1], src0->nb[2], src0->nb[3]);
