@@ -19616,8 +19616,8 @@ struct gguf_context * gguf_init_empty_sparse(void) {
     return ctx;
 }
 
-struct gguf_context * gguf_init_from_file(const char * fname, struct gguf_init_params params) {
-    FILE * file = fopen(fname, "rb");
+struct gguf_context * gguf_init_from_file(const char * fname, struct gguf_init_params params) {//加载文件
+    FILE * file = fopen(fname, "rb"); //这里可以在远程load
     if (!file) {
         return NULL;
     }
@@ -19754,7 +19754,7 @@ struct gguf_context * gguf_init_from_file(const char * fname, struct gguf_init_p
     // read the tensor infos
     {
         ctx->infos = malloc(ctx->header.n_tensors * sizeof(struct gguf_tensor_info));
-
+        printf("read_ctx->infos: %d",ctx->header.n_tensors);
         for (uint32_t i = 0; i < ctx->header.n_tensors; ++i) {
             struct gguf_tensor_info * info = &ctx->infos[i];
 
