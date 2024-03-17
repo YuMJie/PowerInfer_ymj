@@ -3068,7 +3068,7 @@ static bool llm_load_gpu_split_with_budget_for_rdma(llama_model_loader & ml, lla
                << " --layer " << model.hparams.n_layer
                << " --neuron " << ffn_up->ne[1]
                << " --capacity " << neuron_cap
-               << " --vram-capacity " << vram_allocatable_bytes /4 //限制留在本地模型所占的空间
+               << " --vram-capacity " << vram_allocatable_bytes  //限制留在本地模型所占的空间
                << " --output " << cached_split_path;
     
     if (system(command_ss.str().c_str()) != 0 || access(cached_split_path.c_str(), F_OK) != 0) {
@@ -5068,9 +5068,14 @@ static struct ggml_tensor * llm_build_ffn_sparse_rdma(
 #endif
 
     // if(gpu_index->ne[1]==idx->ne[1]) //#TODO
-    {
-        gpu_index_rdma = ggml_add(ctx,idx,gpu_index_rdma);
-    }
+    
+    gpu_index_rdma = ggml_add(ctx,gpu_index_rdma,gpu_index_rdma);
+        // printf("gpu_index_rdma->src1->type %d",gpu_index_rdma->src[0]->type);
+        // if(il==10)
+        // {
+        //     printf("gpu_index_rdma %f ",(float *)(gpu_index_rdma->data));
+        // }
+    
 
     if (up_b) {
         tmp = ggml_add(ctx, tmp, up_b);

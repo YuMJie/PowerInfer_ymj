@@ -6729,7 +6729,9 @@ void ** ggml_cuda_get_data_pp(struct ggml_tensor * tensor) {
 inline void ggml_cuda_op_add(
     const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst,
     const float * src0_dd, const float * src1_dd, float * dst_dd, const cudaStream_t & main_stream) {
-
+    printf("tensor->src[0]->name %s \n",dst->src[0]->name);
+    printf("tensor->src[1]->name %s \n", dst->src[1]->name);
+    printf("tensor->->type %s \n", dst->type);
     GGML_ASSERT(src1->type == GGML_TYPE_F32);
 
     const int64_t ne10 = src1->ne[0];

@@ -6976,6 +6976,9 @@ static void ggml_compute_forward_add_f32(
             float * dst_ptr  = (float *) ((char *) dst->data  + i03*nb3  + i02*nb2  + i01*nb1 );
             float * src0_ptr = (float *) ((char *) src0->data + i03*nb03 + i02*nb02 + i01*nb01);
             float * src1_ptr = (float *) ((char *) src1->data + i13*nb13 + i12*nb12 + i11*nb11);
+            
+
+
 
 #ifdef GGML_USE_ACCELERATE
             vDSP_vadd(src0_ptr, 1, src1_ptr, 1, dst_ptr, 1, ne00);
@@ -7162,7 +7165,9 @@ static void ggml_compute_forward_add_f16_f16(
             ggml_fp16_t * dst_ptr  = (ggml_fp16_t *) ((char *) dst->data  + i3*nb3  + i2*nb2  + i1*nb1);
             ggml_fp16_t * src0_ptr = (ggml_fp16_t *) ((char *) src0->data + i3*nb03 + i2*nb02 + i1*nb01);
             ggml_fp16_t * src1_ptr = (ggml_fp16_t *) ((char *) src1->data + i3*nb13 + i2*nb12 + i1*nb11);
-
+            printf("dst_ptr offset %d\n", i3*nb3  + i2*nb2  + i1*nb1);
+            printf("src0_ptr offset %d\n", i3*nb03 + i2*nb02 + i1*nb01);
+            printf("src1_ptr offset %d\n", i3*nb13 + i2*nb12 + i1*nb11);
             for (int i = 0; i < ne0; i++) {
                 dst_ptr[i] = GGML_FP32_TO_FP16(GGML_FP16_TO_FP32(src0_ptr[i]) + GGML_FP16_TO_FP32(src1_ptr[i]));
             }
@@ -14951,7 +14956,8 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
                 ggml_compute_forward_dup(params, tensor->src[0], tensor);
             } break;
         case GGML_OP_ADD:
-            {
+            {   
+
                 ggml_compute_forward_add(params, tensor->src[0], tensor->src[1], tensor);
             } break;
         case GGML_OP_ADD1:
